@@ -4,7 +4,7 @@
 
 1. **Clone Repository:**
     ```bash
-    git clone https://github.com/TRAN-DANG-KHOA-IT/ Download_Video_Audio_Youtube.git
+    git clone https://github.com/TRAN-DANG-KHOA-IT/Download_Video_Audio_Youtube.git
     ```
 
 2. **Install Required Libraries:**
