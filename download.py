@@ -111,7 +111,7 @@ def download_youtube_audio(url, output_path):
 
             now = time.strftime("%H:%M:%S", time.localtime())
             print(f"=> {now} - Audio downloaded: {title}")
-            return "|success"
+            return "success"
 
     except Exception as e:
         print("Failed to download audio:", str(e))
