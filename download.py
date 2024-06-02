@@ -1,7 +1,8 @@
-import os, sys
+import os
+import sys
 import requests
+import yt_dlp
 from pytube import YouTube
-from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 import time
 
@@ -80,33 +81,44 @@ def load_video(auth, cookie):
 
 def download_youtube_audio(url, output_path):
     try:
-        yt = YouTube(url)
-        stream = yt.streams.filter(only_audio=True).first()
-        out_file = stream.download(output_path)
-        base, ext = os.path.splitext(out_file)
-        new_file = base + '.mp3'
-        
-        # Convert to mp3 if necessary
-        audio = AudioSegment.from_file(out_file)
-        audio.export(new_file, format="mp3")
-        
-        # Add metadata (ID3 tags)
-        audiofile = EasyID3(new_file)
-        audiofile['title'] = yt.title
-        audiofile['artist'] = yt.author
-        audiofile.save()
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'postprocessor_args': [
+                '-id3v2_version', '3'
+            ],
+            'prefer_ffmpeg': True,
+            'quiet': True
+        }
 
-        # Remove original file
-        os.remove(out_file)
-        now = time.strftime("%H:%M:%S", time.localtime())
-        print(f"=> {now} - Audio downloaded: {yt.title}")
-        return "success"
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            title = info_dict.get('title', None)
+            artist = info_dict.get('uploader', None)
+            new_file = os.path.join(output_path, f"{title}.mp3")
+            print(new_file)
+            # Add metadata (ID3 tags)
+            if os.path.exists(new_file):
+                audiofile = EasyID3(new_file)
+                audiofile['title'] = title
+                audiofile['artist'] = artist
+                audiofile.save()
+
+            now = time.strftime("%H:%M:%S", time.localtime())
+            print(f"=> {now} - Audio downloaded: {title}")
+            return "|success"
+
     except Exception as e:
         print("Failed to download audio:", str(e))
-        if os.path.exists(out_file):
-            os.remove(out_file)
-            print(f"File '{out_file}' deleted due to error.")
         return "error"
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt detected. Cleaning up...")
+        sys.exit()
 
 def download_youtube_video(url, output_path):
     try:
@@ -118,48 +130,35 @@ def download_youtube_video(url, output_path):
     except Exception as e:
         print("Failed to download video:", str(e))
         return "error"
+
 title = ""
 output_path = ""
 if __name__ == "__main__":
-    try:
-        output_path = input("Enter the path to save (For example: C:\\Youtube): ")
-        download_choice = input("Do you want to download audio or video? (Enter 'audio' or 'video'): ").strip().lower()
-        stt = 0
-        cookie = input("Enter YouTube Cookie: ")
-        auth = input("Enter YouTube Authorization: ")
-        while True:
+    output_path = input("Enter the path to save (For example: C:\\Youtube): ")
+    download_choice = input("Do you want to download audio or video? (Enter 'audio' or 'video'): ").strip().lower()
+    stt = 0
+    cookie = input("Enter YouTube Cookie: ")
+    auth = input("Enter YouTube Authorization: ")
+    while True:
+        video_list = load_video(auth, cookie)
+        if not video_list:
+            cookie = input("Enter YouTube Cookie: ")
+            auth = input("Enter YouTube Authorization: ")
             video_list = load_video(auth, cookie)
-            if not video_list:
-                cookie = input("Enter YouTube Cookie: ")
-                auth = input("Enter YouTube Authorization: ")
-                video_list = load_video(auth, cookie)
-            for url, title in video_list:
-                stt += 1
-                now = time.strftime("%H:%M:%S", time.localtime())
-                print(f"{stt} - {now} - Downloading: {title}")
-                try:
-                    if download_choice == 'audio':
-                        download = download_youtube_audio(url, output_path)
-                    elif download_choice == 'video':
-                        download = download_youtube_video(url, output_path)
-                    else:
-                        print("Invalid selection. Please restart the program and select 'audio' or 'video'.")
-                        exit(1)
-                    if download == "error":
-                        stt -= 1
-                except Exception as e:
-                    print(f"Unexpected error: {e}")
-                    stt -= 1
-    except KeyboardInterrupt:      
-        print(output_path+"\\"+title+".mp4")
-        if os.path.exists(output_path+"\\"+title+".mp4"):
+        for url, title in video_list:
+            stt += 1
+            now = time.strftime("%H:%M:%S", time.localtime())
+            print(f"{stt} - {now} - Downloading: {title}")
             try:
-                # Attempt to close any open handles to the file
-                with open(output_path+"\\"+title+".mp4", 'r') as f:
-                    pass  # Do nothing, just attempt to open and close the file
-                # Now, attempt to remove the file
-                os.remove(output_path+"\\"+title+".mp4")
-                print("\nExiting the program.")
-                sys.exit()
-            except PermissionError:
-                print("File is still in use. Cannot delete.")
+                if download_choice == 'audio':
+                    download = download_youtube_audio(url, output_path)
+                elif download_choice == 'video':
+                    download = download_youtube_video(url, output_path)
+                else:
+                    print("Invalid selection. Please restart the program and select 'audio' or 'video'.")
+                    exit(1)
+                if download == "error":
+                    stt -= 1
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                stt -= 1
